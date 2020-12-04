@@ -43,6 +43,15 @@
               v-model="extraTime"
               :disabled="!!exporting"
             ></b-form-input>
+            <h3>Transparent background</h3>
+            <b-form-checkbox
+              size="lg"
+              type="checkbox"
+              v-model="transparency"
+              :disabled="!!exporting"
+            >
+              Export video with a transparent background
+            </b-form-checkbox>
           </div>
           <div class="text-center mt-4">
             <b-button
@@ -120,113 +129,13 @@ import Vivus from "vivus";
 import tempy from "tempy";
 import fs from "fs-extra";
 import path from "path";
-import ffmpegStatic from "ffmpeg-static";
-import ffmpeg from "fluent-ffmpeg";
 import { remote } from "electron";
-import execa from "execa";
 
-console.log(ffmpegStatic);
-let FFMPEGPath;
-// I can't get electron builder to unpack ffmpeg-static using asarUnpack...
-if (process.env.NODE_ENV === "development") {
-  console.log(remote.process.env);
-  FFMPEGPath = path.join(
-    remote.process.env.INIT_CWD,
-    "node_modules",
-    "ffmpeg-static",
-    "ffmpeg"
-  );
-} else {
-  console.log(ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static"));
-  FFMPEGPath = ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static");
-}
+import svgToPng from "./services/png.conversion.service.js";
+import videoService from "./services/video.service.js";
 
-ffmpeg.setFfmpegPath(FFMPEGPath);
-
-const convertImagesToVideo = async (
-  tempDirectory,
-  extraTime,
-  numberOfFrames,
-  filePath
-) => {
-  return await execa(
-    FFMPEGPath,
-    [
-      "-i",
-      path.join(tempDirectory, "%1d.png"),
-      "-y",
-      "-an",
-      "-r",
-      "60",
-      "-c:v",
-      "prores_ks",
-      "-profile:v",
-      "4",
-      "-quant_mat",
-      "'hq'",
-      "-pix_fmt",
-      "yuva444p10le",
-      extraTime ? "-vf" : "",
-      extraTime ? `tpad=stop_mode=clone:stop_duration=${extraTime}` : "",
-      filePath.replace(/\.mov$/i, "") + ".mov",
-    ],
-    { shell: true }
-  );
-  // return new Promise((resolve, reject) => {
-  //   ffmpeg()
-  //     .noAudio()
-  //     .input(path.join(tempDirectory, "%1d.png"))
-  //     .fps(60)
-  //     .videoCodec("prores_ks")
-  //     .outputOptions([
-  //       "-profile:v 4",
-  //       "-quant_mat 'hq'",
-  //       "-pix_fmt yuva444p10le",
-  //     ])
-  //     .videoFilter(`tpad=stop_mode=clone:stop_duration=${extraTime}`)
-  //     .on("end", () => {
-  //       resolve();
-  //     })
-  //     .on("error", (err) => {
-  //       reject(err);
-  //     })
-  //     .save(filePath.replace(/\.mov$/i, "") + ".mov");
-  // });
-};
-
-async function svgToPng(svg, width, height) {
-  return new Promise((resolve) => {
-    const url = getSvgUrl(svg);
-    svgUrlToPng(
-      url,
-      (imgData) => {
-        resolve(imgData);
-        URL.revokeObjectURL(url);
-      },
-      width,
-      height
-    );
-  });
-}
-function getSvgUrl(svg) {
-  return URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-}
-function svgUrlToPng(svgUrl, callback, width, height) {
-  const svgImage = document.createElement("img");
-  document.body.appendChild(svgImage);
-  svgImage.onload = function() {
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const canvasCtx = canvas.getContext("2d");
-    canvasCtx.drawImage(svgImage, 0, 0);
-    const imgData = canvas.toDataURL("image/png");
-    callback(imgData);
-  };
-  svgImage.src = svgUrl;
-}
 const wait = async function(delay) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     setTimeout(resolve, delay);
   });
 };
@@ -242,17 +151,18 @@ export default {
         inputFile: null,
         duration: process.env.NODE_ENV === "development" ? 0.1 : 3,
         pathTimingFunction: Vivus.LINEAR,
-        type: "oneByOne",
+        type: "oneByOne"
       },
       player: {
         progress: 0,
-        playing: false,
+        playing: false
       },
       typeOptions: ["delayed", "sync", "oneByOne"],
       pathTimingOptions: [
         { value: Vivus.LINEAR, text: "Linear" },
-        { value: Vivus.EASE, text: "Ease" },
+        { value: Vivus.EASE, text: "Ease" }
       ],
+      transparency: process.platform === "darwin"
     };
   },
   computed: {},
@@ -278,13 +188,13 @@ export default {
               start: "manual",
               onReady: () => {
                 this.togglePlayer(null, true);
-              },
+              }
             })
           );
         }
       },
-      deep: true,
-    },
+      deep: true
+    }
   },
   methods: {
     resetPlayer() {
@@ -318,7 +228,7 @@ export default {
     async exportMovie() {
       if (this.vivusInstance) {
         let { canceled, filePath } = await remote.dialog.showSaveDialog({
-          title: "Save video as",
+          title: "Save video as"
         });
         if (canceled) {
           return;
@@ -346,24 +256,13 @@ export default {
             );
           }
           this.exporting = 2;
+          await videoService.convertImagesToVideo(
+            tempDirectory,
+            this.extraTime,
+            filePath,
+            this.transparency
+          );
           try {
-            await convertImagesToVideo(
-              tempDirectory,
-              this.extraTime,
-              numberOfFrames,
-              filePath
-            );
-            if (process.platform === "darwin") {
-              this.exporting = 3;
-              await execa("avconvert", [
-                "--source",
-                filePath,
-                "--output",
-                filePath.replace(/\.mov$/i, "_transparent.mov"),
-                // "--preset",
-                // "PresetHEVCHighestQualityWithAlpha",
-              ]);
-            }
             alert("Video created successfully !");
             this.exporting = false;
             await fs.remove(tempDirectory);
@@ -384,7 +283,7 @@ export default {
         console.log(wait);
         this.exporting = false;
       }
-    },
-  },
+    }
+  }
 };
 </script>
