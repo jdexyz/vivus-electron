@@ -13,35 +13,35 @@
               :state="Boolean(vivusConfig.inputFile)"
               placeholder="Choose a file or drop it here..."
               drop-placeholder="Drop file here..."
-              :disabled="exporting"
+              :disabled="!!exporting"
             ></b-form-file>
             <h3>Duration (in seconds)</h3>
             <b-form-input
               size="lg"
               type="number"
               v-model="vivusConfig.duration"
-              :disabled="exporting"
+              :disabled="!!exporting"
             ></b-form-input>
             <h3>Animation Type</h3>
             <b-form-select
               size="lg"
               v-model="vivusConfig.type"
               :options="typeOptions"
-              :disabled="exporting"
+              :disabled="!!exporting"
             ></b-form-select>
             <h3>Path Timing</h3>
             <b-form-select
               size="lg"
               v-model="vivusConfig.pathTimingFunction"
               :options="pathTimingOptions"
-              :disabled="exporting"
+              :disabled="!!exporting"
             ></b-form-select>
             <h3>Extra time at the end (s)</h3>
             <b-form-input
               size="lg"
               type="number"
               v-model="extraTime"
-              :disabled="exporting"
+              :disabled="!!exporting"
             ></b-form-input>
           </div>
           <div class="text-center mt-4">
@@ -49,7 +49,7 @@
               variant="outline-info"
               class="mb-2"
               @click="resetPlayer"
-              :disabled="exporting"
+              :disabled="!!exporting"
             >
               <b-icon icon="skip-backward-fill" aria-hidden="true"></b-icon>
             </b-button>
@@ -57,7 +57,7 @@
               variant="outline-info"
               class="mb-2"
               @click="togglePlayer"
-              :disabled="exporting"
+              :disabled="!!exporting"
             >
               <b-icon
                 icon="play-fill"
@@ -70,7 +70,7 @@
               variant="outline-info"
               class="mb-2"
               @click="finishPlayer"
-              :disabled="exporting"
+              :disabled="!!exporting"
             >
               <b-icon icon="skip-forward-fill" aria-hidden="true"></b-icon>
             </b-button>
@@ -80,10 +80,11 @@
             variant="outline-info"
             class="mt-3 mb-2"
             @click="exportMovie"
-            :disabled="exporting"
+            :disabled="!!exporting"
           >
-            <span v-if="!exporting">Export as .mp4</span>
-            <span v-else>Exporting...</span>
+            <span v-if="!exporting">Export as .mov</span>
+            <span v-else-if="exporting === true">Exporting...</span>
+            <span v-else-if="exporting === 2">Exporting video...</span>
           </b-button>
         </div>
         <div class="col-md-9">
@@ -120,9 +121,13 @@ import fs from "fs-extra";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
+import { remote } from "electron";
 
 console.log(ffmpegStatic);
-ffmpeg.setFfmpegPath(ffmpegStatic);
+ffmpeg.setFfmpegPath(ffmpegStatic.replace("app.asar", "app.asar.unpacked"));
+// ffmpeg.setFfmpegPath(
+//   "/Users/jd/Sync/General/vivus-electron/node_modules/ffmpeg-static-electron/bin/mac/x64/ffmpeg"
+// );
 
 async function svgToPng(svg, width, height) {
   return new Promise((resolve) => {
@@ -167,7 +172,7 @@ export default {
     return {
       exporting: false,
       vivusInstance: null,
-      extraTime: 0,
+      extraTime: 0.1,
       vivusConfig: {
         inputFile: null,
         duration: 3,
@@ -248,60 +253,65 @@ export default {
     },
     async exportMovie() {
       if (this.vivusInstance) {
+        let { canceled, filePath } = await remote.dialog.showSaveDialog({
+          title: "Save video as",
+        });
+        if (canceled) {
+          return;
+        }
         try {
           this.vivusInstance.reset();
           const numberOfFrames = this.vivusConfig.duration * 60;
           this.exporting = true;
-          let tempDirectory = tempy.directory();
-          tempDirectory = "/Users/jd/Desktop/Temp";
-          if (Math.random() > 3) {
-            for (let frame = 0; frame <= numberOfFrames; frame++) {
-              await wait(100);
-              this.vivusInstance.setFrameProgress(frame / numberOfFrames);
-              await wait(100);
-              console.log(
-                this.$refs.inputImage.clientWidth,
-                this.$refs.inputImage.clientHeight
-              );
-              let base64Image = await svgToPng(
-                this.$refs.inputImage.innerHTML,
-                2560,
-                1440
-                // this.$refs.inputImage.clientWidth,
-                // this.$refs.inputImage.clientHeight
-              );
-              await fs.writeFile(
-                path.join(tempDirectory, frame + ".png"),
-                base64Image.replace("data:image/png;base64,", ""),
-                "base64"
-              );
-            }
+          const tempDirectory = tempy.directory();
+          for (let frame = 0; frame <= numberOfFrames; frame++) {
+            await wait(100);
+            this.vivusInstance.setFrameProgress(frame / numberOfFrames);
+            await wait(100);
+            let base64Image = await svgToPng(
+              this.$refs.inputImage.innerHTML,
+              2560,
+              1440
+              // this.$refs.inputImage.clientWidth,
+              // this.$refs.inputImage.clientHeight
+            );
+            await fs.writeFile(
+              path.join(tempDirectory, frame + ".png"),
+              base64Image.replace("data:image/png;base64,", ""),
+              "base64"
+            );
           }
+          this.exporting = 2;
           ffmpeg()
             .noAudio()
-            .input(path.join(tempDirectory, "%02d.png"))
+            .input(path.join(tempDirectory, "%1d.png"))
             .fps(60)
+            .videoCodec("qtrle")
             .videoFilter(
-              `zoompan=d=1+'${this.extraTime * 60}*eq(in,${numberOfFrames})'`
+              `zoompan=d=1+'${this.extraTime * 60}*eq(in,${numberOfFrames +
+                1})'`
             )
             .on("end", function() {
               alert("Video created successfully !");
+              this.exporting = false;
             })
             .on("error", function(err) {
               alert("an error happened: " + err.message);
               console.error(err);
+              this.exporting = false;
             })
-            .save(path.join(tempDirectory, "outputfile.mov"));
+            .save(filePath.replace(/\.mov$/i, "") + ".mov");
         } catch (e) {
           alert("An error occured during the export function.");
           console.error(e);
+          this.exporting = false;
         }
       } else {
         alert("You must first select an SVG file.");
         console.log(svgToPng);
         console.log(wait);
+        this.exporting = false;
       }
-      this.exporting = false;
     },
   },
 };
