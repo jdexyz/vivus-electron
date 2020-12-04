@@ -85,6 +85,7 @@
             <span v-if="!exporting">Export as .mov</span>
             <span v-else-if="exporting === true">Exporting...</span>
             <span v-else-if="exporting === 2">Exporting video...</span>
+            <span v-else-if="exporting === 3">Converting video...</span>
           </b-button>
         </div>
         <div class="col-md-9">
@@ -119,23 +120,79 @@ import Vivus from "vivus";
 import tempy from "tempy";
 import fs from "fs-extra";
 import path from "path";
-import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
-// import ffmpegPath from "@ffmpeg-installer/ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
 import { remote } from "electron";
+import execa from "execa";
 
 console.log(ffmpegStatic);
-// console.log(ffmpegPath);
-// ffmpeg.setFfmpegPath(ffmpegPath.path.replace("app.asar", "app.asar.unpacked"));
-console.log(ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static"));
-ffmpeg.setFfmpegPath(
-  ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static")
-);
-// /Users/jd/Sync/General/vivus-electron/dist_electron/mac/vivus-electron.app/Contents/Resources/ffmpeg
+let FFMPEGPath;
 // I can't get electron builder to unpack ffmpeg-static using asarUnpack...
-// ffmpeg.setFfmpegPath(
-//   "/Users/jd/Sync/General/vivus-electron/node_modules/ffmpeg-static-electron/bin/mac/x64/ffmpeg"
-// );
+if (process.env.NODE_ENV === "development") {
+  console.log(remote.process.env);
+  FFMPEGPath = path.join(
+    remote.process.env.INIT_CWD,
+    "node_modules",
+    "ffmpeg-static",
+    "ffmpeg"
+  );
+} else {
+  console.log(ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static"));
+  FFMPEGPath = ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static");
+}
+
+ffmpeg.setFfmpegPath(FFMPEGPath);
+
+const convertImagesToVideo = async (
+  tempDirectory,
+  extraTime,
+  numberOfFrames,
+  filePath
+) => {
+  return await execa(
+    FFMPEGPath,
+    [
+      "-i",
+      path.join(tempDirectory, "%1d.png"),
+      "-y",
+      "-an",
+      "-r",
+      "60",
+      "-c:v",
+      "prores_ks",
+      "-profile:v",
+      "4",
+      "-quant_mat",
+      "'hq'",
+      "-pix_fmt",
+      "yuva444p10le",
+      extraTime ? "-vf" : "",
+      extraTime ? `tpad=stop_mode=clone:stop_duration=${extraTime}` : "",
+      filePath.replace(/\.mov$/i, "") + ".mov",
+    ],
+    { shell: true }
+  );
+  // return new Promise((resolve, reject) => {
+  //   ffmpeg()
+  //     .noAudio()
+  //     .input(path.join(tempDirectory, "%1d.png"))
+  //     .fps(60)
+  //     .videoCodec("prores_ks")
+  //     .outputOptions([
+  //       "-profile:v 4",
+  //       "-quant_mat 'hq'",
+  //       "-pix_fmt yuva444p10le",
+  //     ])
+  //     .videoFilter(`tpad=stop_mode=clone:stop_duration=${extraTime}`)
+  //     .on("end", () => {
+  //       resolve();
+  //     })
+  //     .on("error", (err) => {
+  //       reject(err);
+  //     })
+  //     .save(filePath.replace(/\.mov$/i, "") + ".mov");
+  // });
+};
 
 async function svgToPng(svg, width, height) {
   return new Promise((resolve) => {
@@ -183,7 +240,7 @@ export default {
       extraTime: 0.1,
       vivusConfig: {
         inputFile: null,
-        duration: 3,
+        duration: process.env.NODE_ENV === "development" ? 0.1 : 3,
         pathTimingFunction: Vivus.LINEAR,
         type: "oneByOne",
       },
@@ -198,7 +255,6 @@ export default {
       ],
     };
   },
-  mounted() {},
   computed: {},
   watch: {
     vivusConfig: {
@@ -290,25 +346,33 @@ export default {
             );
           }
           this.exporting = 2;
-          ffmpeg()
-            .noAudio()
-            .input(path.join(tempDirectory, "%1d.png"))
-            .fps(60)
-            .videoCodec("qtrle")
-            .videoFilter(
-              `zoompan=d=1+'${this.extraTime * 60}*eq(in,${numberOfFrames +
-                1})'`
-            )
-            .on("end", () => {
-              alert("Video created successfully !");
-              this.exporting = false;
-            })
-            .on("error", (err) => {
-              alert("an error happened: " + err.message);
-              console.error(err);
-              this.exporting = false;
-            })
-            .save(filePath.replace(/\.mov$/i, "") + ".mov");
+          try {
+            await convertImagesToVideo(
+              tempDirectory,
+              this.extraTime,
+              numberOfFrames,
+              filePath
+            );
+            if (process.platform === "darwin") {
+              this.exporting = 3;
+              await execa("avconvert", [
+                "--source",
+                filePath,
+                "--output",
+                filePath.replace(/\.mov$/i, "_transparent.mov"),
+                // "--preset",
+                // "PresetHEVCHighestQualityWithAlpha",
+              ]);
+            }
+            alert("Video created successfully !");
+            this.exporting = false;
+            await fs.remove(tempDirectory);
+          } catch (err) {
+            alert("an error occurred: " + err.message);
+            console.error(err);
+            this.exporting = false;
+            await fs.remove(tempDirectory);
+          }
         } catch (e) {
           alert("An error occured during the export function.");
           console.error(e);
