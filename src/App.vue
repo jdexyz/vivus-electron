@@ -121,10 +121,18 @@ import fs from "fs-extra";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
+// import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { remote } from "electron";
 
 console.log(ffmpegStatic);
-ffmpeg.setFfmpegPath(ffmpegStatic.replace("app.asar", "app.asar.unpacked"));
+// console.log(ffmpegPath);
+// ffmpeg.setFfmpegPath(ffmpegPath.path.replace("app.asar", "app.asar.unpacked"));
+console.log(ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static"));
+ffmpeg.setFfmpegPath(
+  ffmpegStatic.replace("app.asar", "node_modules/ffmpeg-static")
+);
+// /Users/jd/Sync/General/vivus-electron/dist_electron/mac/vivus-electron.app/Contents/Resources/ffmpeg
+// I can't get electron builder to unpack ffmpeg-static using asarUnpack...
 // ffmpeg.setFfmpegPath(
 //   "/Users/jd/Sync/General/vivus-electron/node_modules/ffmpeg-static-electron/bin/mac/x64/ffmpeg"
 // );

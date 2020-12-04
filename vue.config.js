@@ -12,13 +12,14 @@ module.exports = {
     electronBuilder: {
       nodeIntegration: true,
       builderOptions: {
-        asarUnpack: [
+        extraResources: [
           "**/app/node_modules/ffmpeg-static/*",
           "node_modules/ffmpeg-static/*",
-          "../node_modules/@ffmpeg-installer",
+          //   "../node_modules/@ffmpeg-installer",
           "../node_modules/ffmpeg-static/*",
           "../node_modules/ffmpeg-static",
         ],
+        // asarUnpack: ["node_modules/@ffmpeg-installer/ffmpeg"],
       },
     },
   },
