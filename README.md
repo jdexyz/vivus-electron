@@ -2,6 +2,8 @@
 
 A quick and dirty electron app to make video animations using [vivus](https://github.com/maxwellito/vivus).
 
+DO NOT USE IN PRODUCTION
+
 ## Project setup
 
 ```
