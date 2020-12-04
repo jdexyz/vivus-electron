@@ -299,11 +299,11 @@ export default {
               `zoompan=d=1+'${this.extraTime * 60}*eq(in,${numberOfFrames +
                 1})'`
             )
-            .on("end", function() {
+            .on("end", () => {
               alert("Video created successfully !");
               this.exporting = false;
             })
-            .on("error", function(err) {
+            .on("error", (err) => {
               alert("an error happened: " + err.message);
               console.error(err);
               this.exporting = false;
