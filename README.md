@@ -1,24 +1,21 @@
 # vivus-electron
 
+A quick and dirty electron app to make video animations using [vivus](https://github.com/maxwellito/vivus).
+
 ## Project setup
+
 ```
-npm install
+yarn install
 ```
 
 ### Compiles and hot-reloads for development
+
 ```
-npm run serve
+yarn electron:serve
 ```
 
 ### Compiles and minifies for production
-```
-npm run build
-```
 
-### Lints and fixes files
 ```
-npm run lint
+yarn electron:build
 ```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).

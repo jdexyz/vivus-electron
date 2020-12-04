@@ -11,12 +11,15 @@ module.exports = {
   pluginOptions: {
     electronBuilder: {
       nodeIntegration: true,
-
-      //   asarUnpack: [
-      //     "node_modules/ffmpeg-static/bin/${os}/${arch}/ffmpeg",
-      //     "node_modules/ffmpeg-static/index.js",
-      //     "node_modules/ffmpeg-static/package.json",
-      //   ],
+      builderOptions: {
+        asarUnpack: [
+          "**/app/node_modules/ffmpeg-static/*",
+          "node_modules/ffmpeg-static/*",
+          "../node_modules/@ffmpeg-installer",
+          "../node_modules/ffmpeg-static/*",
+          "../node_modules/ffmpeg-static",
+        ],
+      },
     },
   },
 };
